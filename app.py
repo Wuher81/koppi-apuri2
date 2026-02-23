@@ -17,7 +17,7 @@ st.markdown("""
     .stApp { background-color: #000000; color: white; }
     .stButton>button { width: 100%; border-radius: 5px; height: 3em; background-color: #CC0000; color: white; }
     </style>
-    """, unsafe_allow_html==True)
+    """, unsafe_allow_html=True)
 
 # --- JOUKKUEET ---
 JOUKKUEET = [
