@@ -11,11 +11,30 @@ from playwright.sync_api import sync_playwright
 # --- SIVUN KONFIGURAATIO ---
 st.set_page_config(page_title="Ässät Koppi-Apuri", page_icon="🏒", layout="centered")
 
-# --- TYYLITYS (Musta tausta Streamlitissä) ---
+## --- TYYLITYS (Päivitetty väri: Tummanharmaa haku-nappi) ---
 st.markdown("""
     <style>
     .stApp { background-color: #000000; color: white; }
-    .stButton>button { width: 100%; border-radius: 5px; height: 3em; background-color: #333333; color: white; }
+    
+    /* Tämä muokkaa nimenomaan sitä haku-nappia */
+    .stButton>button { 
+        width: 100%; 
+        border-radius: 5px; 
+        height: 3em; 
+        background-color: #333333 !important; /* Tummanharmaa tausta */
+        color: white !important;              /* Valkoinen teksti */
+        font-weight: bold;
+        border: 1px solid #CC0000;            /* Ohut punainen reunus Ässien tyyliin */
+    }
+    
+    /* Mitä tapahtuu kun hiiri viedään päälle */
+    .stButton>button:hover {
+        background-color: #CC0000 !important; /* Muuttuu punaiseksi hovauksessa */
+        color: white !important;
+    }
+
+    label, p, span { color: white !important; }
+    .stDateInput div, .stTextInput div { color: black !important; }
     </style>
     """, unsafe_allow_html=True)
 
