@@ -15,7 +15,7 @@ st.set_page_config(page_title="Ässät Koppi-Apuri", page_icon="🏒", layout="c
 st.markdown("""
     <style>
     .stApp { background-color: #000000; color: white; }
-    .stButton>button { width: 100%; border-radius: 5px; height: 3em; background-color: #CC0000; color: white; }
+    .stButton>button { width: 100%; border-radius: 5px; height: 3em; background-color: #333333; color: white; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -50,6 +50,9 @@ if aja_haku:
         tulokset = []
         with st.status("Haetaan tietoja...", expanded=True) as status:
             try:
+                st.write("Varmistetaan selainkomponentit (tämä vie hetken)...")
+                os.system("playwright install firefox")
+
                 with sync_playwright() as p:
                     # Selain pilvipalvelua varten
                     browser = p.firefox.launch(headless=True)
