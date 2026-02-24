@@ -1,5 +1,4 @@
-playwright
-icalendar
-requests
 streamlit
-pandas
+playwright
+requests
+tkcalendar
