@@ -5,24 +5,19 @@ import sys
 import requests
 from datetime import datetime, date
 
-# --- 1. AUTOMAATTINEN ASENNUSVAIHE ---
-# Varmistetaan, että tarvittavat kirjastot ja selaimet löytyvät pilvipalvelusta
+# --- 1. ASENNUKSET ---
 try:
     import playwright
     import icalendar
 except ImportError:
-    # Käytetään versiota >=1.49.0 Python 3.13 -yhteensopivuuden takia
     subprocess.run([sys.executable, "-m", "pip", "install", "playwright>=1.49.0", "icalendar"])
 
-# Asennetaan Chromium-selain taustalla
 os.system(f"{sys.executable} -m playwright install chromium")
 
-# Tuodaan loput kirjastot vasta asennuksen jälkeen
 from icalendar import Calendar
 from playwright.sync_api import sync_playwright
 
-# --- 2. MÄÄRITTELYT ---
-# Lisää tähän joukkueiden nimet ja niiden ICS-linkit
+# --- 2. JOUKKUEET ---
 JOUKKUEET = {
     "U10 Valkoinen": "https://assat-app.jopox.fi/calendar/6755/export.ics",
     "U10 Punainen":  "https://assat-app.jopox.fi/calendar/6756/export.ics",
@@ -32,52 +27,52 @@ JOUKKUEET = {
 # --- 3. LOGIIKKA ---
 
 def aja_haku_kirjautumisella(kayttaja, salasana):
-    """Hoitaa kirjautumisen ja pelaajien laskemisen."""
     with sync_playwright() as p:
-        # Käynnistys vakailla asetuksilla pilviympäristöä varten
         browser = p.chromium.launch(
-            headless=True, 
+            headless=True,
             args=["--no-sandbox", "--disable-setuid-sandbox"]
         )
-        context = browser.new_context()
+        # Käytetään selkeää selainistuntoa
+        context = browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
         page = context.new_page()
 
         taman_paivan_tulokset = []
         tanaan = date.today()
 
         try:
-            # Kirjautumisvaihe
-            st.info("Kirjaudutaan sisään Jopoxiin...")
-            page.goto("https://login.jopox.fi/login?to=145")
-            target = page
-            for f in page.frames:
-                if f.locator("input[type='password']").count() > 0:
-                    target = f; break
-            target.locator("input[type='password']").click()
-            page.fill('input[name="username"]', kayttaja)
-            page.fill('input[name="password"]', salasana)
-            page.click('button[type="submit"]')
-
-            # Siirtyminen selainversioon (tärkeä!)
-            time.sleep(5)
-            btn = page.locator("text=/TO BROWSER VERSION|SIIRRY SELAINVERSIOON/i")
-            if btn.is_visible():
-                btn.click()
-                time.sleep(2)
+            # Kirjautuminen
+            st.info("Avataan kirjautumissivua...")
+            page.goto("https://login.jopox.fi/login?to=145", wait_until="networkidle")
             
-            # Odotetaan, että sivu latautuu kirjautumisen jälkeen
+            # Varmistetaan, että ollaan oikealla sivulla ennen täyttöä
+            # Joskus Jopox käyttää id-kenttiä, joskus name-kenttiä
+            st.write("Täytetään tunnukset...")
+            page.wait_for_selector('input', timeout=10000)
+            
+            # Yritetään täyttää kentät useammalla tavalla varmuuden vuoksi
+            page.locator('input[type="text"], input[name="username"], #username').first.fill(kayttaja)
+            page.locator('input[type="password"], input[name="password"], #password').first.fill(salasana)
+            
+            # Klikataan nappia (etsitään tekstillä tai tyypillä)
+            page.locator('button:has-text("Kirjaudu"), button[type="submit"]').first.click()
+            
+            # Odotetaan, että päästään sisään (networkidle varmistaa latauksen)
             page.wait_for_load_state("networkidle")
+            
+            if "login" in page.url:
+                st.error("Kirjautuminen epäonnistui. Tarkista tunnus ja salasana.")
+                return []
 
-            # Käydään joukkueet läpi
+            st.success("Kirjautuminen onnistui!")
+
             for nimi, ics_url in JOUKKUEET.items():
-                st.write(f"Tarkistetaan joukkue: **{nimi}**")
+                st.write(f"Haetaan: **{nimi}**")
                 
-                # Mennään ICS-linkkiin kirjautuneena
-                page.goto(ics_url)
-                # Playwright hakee raakadatan (content), jota icalendar voi lukea
-                ics_data = page.content()
+                # Mennään suoraan ICS-linkkiin - Playwright lataa raakadatan
+                response = page.goto(ics_url)
+                ics_data = response.body() # Haetaan raaka tavudata
                 
-                # Poimitaan päivän tapahtumat
+                # Puretaan kalenteri
                 gcal = Calendar.from_ical(ics_data)
                 for component in gcal.walk():
                     if component.name == "VEVENT":
@@ -86,39 +81,35 @@ def aja_haku_kirjautumisella(kayttaja, salasana):
                         
                         if t_pvm == tanaan:
                             t_url = str(component.get('url'))
-                            # Navigoidaan tapahtuman sivulle laskemaan 'Tulossa'-pelaajat
-                            page.goto(t_url)
-                            page.wait_for_selector("#yesBox", timeout=5000)
+                            page.goto(t_url, wait_until="domcontentloaded")
+                            
+                            # Odotetaan yesBoxia ja lasketaan pelaajat
+                            page.wait_for_selector("#yesBox", timeout=8000)
                             pelaajat = page.locator("#yesBox .chip.player").count()
                             taman_paivan_tulokset.append({"nimi": nimi, "maara": pelaajat})
 
         except Exception as e:
-            st.error(f"Haku keskeytyi virheeseen: {e}")
+            st.error(f"Virhe haun aikana: {e}")
         finally:
             browser.close()
             
         return taman_paivan_tulokset
 
-# --- 4. STREAMLIT-KÄYTTÖLIITTYMÄ ---
+# --- 4. STREAMLIT UI ---
+st.title("🏒 Pukukoppi-apuri v10.1")
 
-st.title("🏒 Pukukoppi-apuri v10.0")
-st.write("Tämä työkalu kirjautuu Jopoxiin, lukee kalenterit ja laskee pelaajamäärät.")
-
-# Käyttäjä syöttää tunnukset
-user = st.text_input("Käyttäjätunnus")
+user = st.text_input("Jopox-tunnus (sähköposti)")
 pw = st.text_input("Salasana", type="password")
 
-if st.button("Laske tämän päivän pelaajat"):
+if st.button("Laske pelaajat"):
     if user and pw:
         data = aja_haku_kirjautumisella(user, pw)
-        
         if data:
-            st.subheader("Päivän yhteenveto:")
+            st.subheader("Päivän tilanne:")
             for r in data:
-                # Koppien määrityslogiikka
                 kopit = "2 KOPPIA" if r['maara'] > 17 else "1 KOPPI"
-                st.success(f"**{r['nimi']}**: {r['maara']} pelaajaa -> **{kopit}**")
-        else:
-            st.info("Ei tapahtumia tälle päivälle tai haku epäonnistui.")
+                st.success(f"**{r['nimi']}**: {r['maara']} pelaajaa -> {kopit}")
+        elif not st.session_state.get('error_shown'):
+             st.info("Ei tapahtumia tälle päivälle.")
     else:
-        st.warning("Syötä ensin käyttäjätunnus ja salasana.")
+        st.warning("Syötä tunnukset ensin.")
