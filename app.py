@@ -2,6 +2,7 @@ import streamlit as st
 import requests
 import re
 from datetime import datetime, timedelta
+from bs4 import BeautifulSoup
 
 # --- JOUKKUEIDEN ASETUKSET ---
 JOUKKUEET = [
@@ -11,35 +12,42 @@ JOUKKUEET = [
     {"nimi": "Ässät Maalivahdit", "ical": "https://ics.jopox.fi/hockeypox/calendar/ical.php?ics=true&e=t&cal=Maalivahtijaatoiminta_9681", "club_id": "9681"}
 ]
 
-def aja_haku_lite(user, pw, alku_pvm, loppu_pvm):
+def aja_haku_varmistettu(user, pw, alku_pvm, loppu_pvm):
     session = requests.Session()
-    session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"})
+    session.headers.update({
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+    })
     
     tulokset = []
     
     try:
-        # 1. Kirjautuminen
-        st.write("Kirjaudutaan Jopoxiin...")
-        login_url = "https://login.jopox.fi/login/authenticate"
+        # 1. HAETAAN KIRJAUTUMISSIVU JA TEKNISET AVAIMET
+        resp = session.get("https://login.jopox.fi/login?to=145")
+        soup = BeautifulSoup(resp.text, 'html.parser')
+        
+        # Haetaan ASP.NET piilokentät (tärkeää kirjautumiselle)
+        viewstate = soup.find("input", {"name": "__VIEWSTATE"})
+        validation = soup.find("input", {"name": "__EVENTVALIDATION"})
+        
         login_payload = {
+            "__VIEWSTATE": viewstate['value'] if viewstate else "",
+            "__EVENTVALIDATION": validation['value'] if validation else "",
             "username": user,
             "password": pw,
             "login": "Kirjaudu"
         }
         
-        # Kirjaudutaan sisään (to = 145 on Ässät-sovellus)
-        session.post("https://login.jopox.fi/login?to=145", data=login_payload)
-
-        # 2. Aikavälin läpikäynti
+        # 2. KIRJAUDUTAAN SISÄÄN
+        session.post("https://login.jopox.fi/login/authenticate", data=login_payload)
+        
+        # 3. KALENTERIN LÄPIKÄYNTI
         curr = alku_pvm
         while curr <= loppu_pvm:
             pvm_str = curr.strftime('%Y%m%d')
             nayta_pvm = curr.strftime('%d.%m.%Y')
             
             for j in JOUKKUEET:
-                # Haetaan iCal-data
                 ical_res = requests.get(j['ical'])
-                # Etsitään päivän tapahtumat iCal-tekstistä
                 events = ical_res.text.replace("\r\n ", "").split("BEGIN:VEVENT")
                 
                 for event in events:
@@ -49,46 +57,51 @@ def aja_haku_lite(user, pw, alku_pvm, loppu_pvm):
                             uid = "".join(filter(str.isdigit, uid_match.group(1)))
                             t_path = "game" if "game" in event.lower() else "training"
                             
-                            # Haetaan tapahtumasivu suoraan
+                            # Haetaan tapahtuman sivu
                             url = f"https://assat-app.jopox.fi/{t_path}/club/{j['club_id']}/{uid}"
                             page_res = session.get(url)
                             
-                            # LASKENTA: Etsitään "chip player" esiintymät HTML:stä
-                            # Tämä perustuu lähettämääsi lähdekoodiin
-                            pelaajat = page_res.text.count("chip  player")
+                            # LASKENTA: Käytetään BeautifulSoupia tarkempaan hakuun
+                            event_soup = BeautifulSoup(page_res.text, 'html.parser')
+                            # Etsitään kaikki divit, joilla on luokka 'chip' ja 'player'
+                            pelaaja_sirut = event_soup.find_all("div", class_=lambda x: x and 'chip' in x and 'player' in x)
+                            maara = len(pelaaja_sirut)
                             
-                            if pelaajat > 0:
+                            if maara > 0:
                                 tulokset.append({
-                                    "Pvm": nayta_pvm,
+                                    "Päivä": nayta_pvm,
                                     "Joukkue": j['nimi'],
-                                    "Pelaajia": pelaajat,
-                                    "Koppitarve": "2 KOPPIA" if pelaajat > 16 else "1 KOPPI"
+                                    "Pelaajia": maara,
+                                    "Tarve": "2 KOPPIA" if maara > 16 else "1 KOPPI"
                                 })
             curr += timedelta(days=1)
             
     except Exception as e:
-        st.error(f"Haku epäonnistui: {e}")
+        st.error(f"Tekninen virhe: {e}")
     
     return tulokset
 
 # --- KÄYTTÖLIITTYMÄ ---
-st.set_page_config(page_title="Ässät Koppi-Web", page_icon="🏒")
+st.set_page_config(page_title="Ässät Koppi-Apuri", layout="centered")
 st.title("🏒 Ässät Koppi-Apuri (Lite)")
 
 with st.sidebar:
-    u = st.text_input("Jopox Tunnus")
+    st.subheader("Kirjautuminen")
+    u = st.text_input("Jopox Tunnus (Sähköposti)")
     p = st.text_input("Salasana", type="password")
-    start = st.date_input("Alku", datetime.now())
-    end = st.date_input("Loppu", datetime.now() + timedelta(days=4))
-    nappi = st.button("HAE TIEDOT")
+    alku = st.date_input("Alkupäivä", datetime.now())
+    loppu = st.date_input("Loppupäivä", datetime.now() + timedelta(days=3))
+    nappi = st.button("HAE KOPPITARPEET")
 
 if nappi:
     if not u or not p:
-        st.error("Syötä tunnukset!")
+        st.warning("Syötä sähköpostiosoite ja salasana.")
     else:
-        with st.spinner("Haetaan tietoja ilman selainta..."):
-            data = aja_haku_lite(u, p, start, end)
+        with st.status("Haetaan ja analysoidaan Jopox-tietoja...", expanded=True) as status:
+            data = aja_haku_varmistettu(u, p, alku, loppu)
             if data:
+                status.update(label="Haku valmis!", state="complete")
                 st.table(data)
             else:
-                st.info("Ei tapahtumia tai kirjautuminen epäonnistui.")
+                status.update(label="Haku päättyi, mutta tietoja ei löytynyt.", state="error")
+                st.info("Vinkki: Varmista, että tunnuksesi on oikein ja että valitulla aikavälillä on tapahtumia Jopox-kalenterissa.")
