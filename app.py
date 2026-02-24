@@ -1,6 +1,6 @@
 import subprocess
 import sys
-
+import os
 # 2. ASENNUSVAIHE: Tämä ajetaan heti kun sovellus käynnistyy
 # Asennetaan Playwright ja Chromium-selain automaattisesti
 try:
