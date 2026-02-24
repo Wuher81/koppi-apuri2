@@ -3,8 +3,6 @@ import pandas as pd
 import re
 import requests
 import os
-import subprocess
-import sys
 from datetime import datetime, timedelta
 from playwright.sync_api import sync_playwright
 
@@ -14,37 +12,18 @@ st.set_page_config(page_title="Ässät Koppi-Apuri", page_icon="🏒", layout="c
 # --- TYYLITYS (Pakotetaan napin väri punaiseksi) ---
 st.markdown("""
     <style>
-    /* Taustaväri mustaksi */
     .stApp { background-color: #000000; color: white; }
-
-    /* Pakotetaan haku-nappi punaiseksi kaikissa tilanteissa */
     div.stButton > button:first-child {
-        background-color: #CC0000 !important; /* Ässien punainen */
-        color: white !important;              /* Valkoinen teksti */
-        border: 2px solid #ffffff !important; /* Valkoinen reunus korostukseksi */
+        background-color: #CC0000 !important;
+        color: white !important;
+        border: 2px solid #ffffff !important;
         width: 100%;
         border-radius: 5px;
         height: 3.5em;
         font-weight: bold !important;
         text-transform: uppercase;
     }
-
-    /* Mitä tapahtuu kun nappia painetaan tai hiiri on päällä */
-    div.stButton > button:first-child:hover {
-        background-color: #990000 !important; /* Tummempi punainen hovauksessa */
-        border-color: #CC0000 !important;
-        color: white !important;
-    }
-    
-    div.stButton > button:first-child:active {
-        background-color: #CC0000 !important;
-        color: white !important;
-    }
-
-    /* Tekstikenttien otsikot valkoisiksi */
     label, p, span { color: white !important; }
-    
-    /* Syöttökenttien sisus mustalla tekstillä valkoisella pohjalla */
     .stDateInput div, .stTextInput div { color: black !important; }
     </style>
     """, unsafe_allow_html=True)
@@ -63,7 +42,7 @@ st.title("🏒 ÄSSÄT KOPPI-APURI v1.0 (Web)")
 with st.form("haku_lomake"):
     col1, col2 = st.columns(2)
     with col1:
-        user = st.text_input("Jopox Tunnus")
+        user = st.text_input("Jopox Tunnus (Sähköposti)")
         alku_pvm = st.date_input("Alku päivä", datetime.now())
     with col2:
         pw = st.text_input("Salasana", type="password")
@@ -90,22 +69,22 @@ if aja_haku:
 
                     st.write("Kirjaudutaan Jopoxiin...")
                     page.goto("https://login.jopox.fi/login?to=145")
+                    page.wait_for_selector("input", timeout=30000)
                     
-                    target = page
-                    for f in page.frames:
-                        if f.locator("input[type='password']").count() > 0:
-                            target = f; break
-                    
-                    target.locator("input[type='password']").fill(user)
+                    # Kirjautuminen
+                    page.focus("input")
+                    page.keyboard.type(user)
                     page.keyboard.press("Tab")
                     page.keyboard.type(pw)
                     page.keyboard.press("Enter")
-                    
-                    st.write("Siirrytään selainversioon...")
+                    page.wait_for_timeout(5000)
+
+                    # Siirrytään selainversioon (jos tarpeen)
                     try:
-                        btn = page.locator("text=/TO BROWSER VERSION|SIIRRY SELAINVERSIOON/i")
-                        btn.wait_for(state="visible", timeout=10000)
-                        btn.click()
+                        btn = page.locator("a:has-text('selainversio'), a:has-text('browser version')").first
+                        if btn.is_visible():
+                            btn.click()
+                            page.wait_for_timeout(3000)
                     except:
                         pass
 
@@ -118,62 +97,68 @@ if aja_haku:
                         st.write(f"Käsitellään: {nayta_pvm}...")
 
                         for j in JOUKKUEET:
-                            res = requests.get(j['ical'], headers={'Cache-Control': 'no-cache'})
-                            ical = res.text.replace("\r\n ", "").replace("\n ", "")
-                            
-                            for seg in ical.split("BEGIN:VEVENT"):
-                                if etsi_pvm in seg and "END:VEVENT" in seg:
-                                    loc = re.search(r"LOCATION:(.*)", seg)
-                                    paikka = loc.group(1).strip().replace("\\,", ",") if loc else "Pori"
-                                    h_id = halli_valinta[0]
-                                    if h_id == "1" and "astora" not in paikka.lower(): continue
-                                    if h_id == "2" and ("isomäki" not in paikka.lower() and "harjoitushalli" not in paikka.lower()): continue
+                            try:
+                                res = requests.get(j['ical'], timeout=10)
+                                ical = res.text.replace("\r\n ", "").replace("\n ", "")
+                                
+                                for seg in ical.split("BEGIN:VEVENT"):
+                                    if etsi_pvm in seg and "END:VEVENT" in seg:
+                                        # Paikka ja Hallisuodatus
+                                        loc = re.search(r"LOCATION:(.*)", seg)
+                                        paikka = loc.group(1).strip().replace("\\,", ",") if loc else "Pori"
+                                        h_id = halli_valinta[0]
+                                        if h_id == "1" and "astora" not in paikka.lower(): continue
+                                        if h_id == "2" and ("isomäki" not in paikka.lower() and "harjoitushalli" not in paikka.lower()): continue
 
-                                    a_m = re.search(r"DTSTART.*T(\d{2})(\d{2})", seg)
-                                    e_m = re.search(r"DTEND.*T(\d{2})(\d{2})", seg)
-                                    klo = f"{a_m.group(1)}:{a_m.group(2)} - {e_m.group(1)}:{e_m.group(2)}" if a_m and e_m else "--:--"
+                                        # Kellonaika
+                                        a_m = re.search(r"DTSTART.*T(\d{2})(\d{2})", seg)
+                                        e_m = re.search(r"DTEND.*T(\d{2})(\d{2})", seg)
+                                        klo = f"{a_m.group(1)}:{a_m.group(2)} - {e_m.group(1)}:{e_m.group(2)}" if a_m and e_m else "--:--"
 
-                                    uid = re.search(r"UID:(.*)", seg)
-                                    if uid:
-                                        uid_nro = "".join(filter(str.isdigit, uid.group(1)))
-                                        t_path = "game" if "game" in uid.group(1).lower() else "training"
-                                        
-                                        
-                                        
-                                        # Kokeillaan ladata pelaajat, jos epäonnistuu, hypätään yli
-                                        try:
+                                        uid = re.search(r"UID:(.*)", seg)
+                                        if uid:
+                                            uid_nro = "".join(filter(str.isdigit, uid.group(1)))
+                                            t_path = "game" if "game" in uid.group(1).lower() else "training"
+                                            
+                                            # Tapahtuman sivu
                                             page.goto(f"https://assat-app.jopox.fi/{t_path}/club/{j['club_id']}/{uid_nro}")
-                                            page.wait_for_selector("#yesBox", timeout=12000)
                                             
-                                            maara = page.locator("#yesBox .chip.player").count()
-                                            if maara == 0: 
-                                                kaikki_chipit = page.locator("#yesBox .chip").count()
-                                                if kaikki_chipit > 0:
-                                                    maara = kaikki_chipit
+                                            try:
+                                                # Odotetaan pelaajakortteja (.chip on Jopoxin yleinen luokka)
+                                                page.wait_for_selector(".chip", timeout=15000)
+                                                
+                                                # Lasketaan usealla eri valitsimella varmuuden vuoksi
+                                                maara = page.locator(".chip, .player-chip, .in-player").count()
+                                                
+                                                if maara == 0:
+                                                    # Jos ei löytynyt, kokeillaan laskea divit ilmoittautumislaatikosta
+                                                    maara = page.locator("#yesBox .name, #yesBox span").count()
 
-                                        
-                                            
-                                            tulokset.append({
-                                                "Pvm": nayta_pvm, "Klo": klo, "Tyyppi": "PELI" if t_path == "game" else "HKT",
-                                                "Joukkue": j['nimi'], "Paikka": paikka, "Hlö": maara,
-                                                "Tarve": "2 KOPPIA" if maara > 16 else "1 KOPPI"
-                                            })
-                                        except:
-                                            st.warning(f"Ei saatu tietoja tapahtumasta {nayta_pvm} {klo}")
+                                                tulokset.append({
+                                                    "Pvm": nayta_pvm, "Klo": klo, "Tyyppi": "PELI" if t_path == "game" else "HKT",
+                                                    "Joukkue": j['nimi'], "Paikka": paikka, "Hlö": maara,
+                                                    "Tarve": "2 KOPPIA" if maara > 16 else "1 KOPPI"
+                                                })
+                                            except:
+                                                st.warning(f"Ei ilmoittautuneita tai timeout: {nayta_pvm} {klo}")
 
-                        # TÄRKEÄÄ: Siirretään päivää eteenpäin for-silmukoiden ulkopuolella
+                            except Exception as e:
+                                continue
+                        
                         curr += timedelta(days=1)
                     
-                    # Suljetaan selain vasta KAIKKIEN päivien jälkeen
                     browser.close()
                 
                 status.update(label="Haku valmis!", state="complete", expanded=False)
 
                 if tulokset:
                     df = pd.DataFrame(tulokset)
-                    st.dataframe(df.style.applymap(lambda x: 'color: #CC0000; font-weight: bold' if x == '2 KOPPIA' else '', subset=['Tarve']), use_container_width=True)
+                    st.table(df)
+                    st.divider()
+                    csv = df.to_csv(index=False).encode('utf-8-sig')
+                    st.download_button("📥 LATAA TULOKSET (CSV)", csv, "kopit.csv", "text/csv")
                 else:
                     st.warning("Tapahtumia ei löytynyt.")
 
             except Exception as e:
-                st.error(f"Tapahtui virhe: {e}")
+                st.error(f"Virhe: {e}")
