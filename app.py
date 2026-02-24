@@ -1,20 +1,22 @@
-import streamlit as st
-import os
 import subprocess
+import sys
+
+# 2. ASENNUSVAIHE: Tämä ajetaan heti kun sovellus käynnistyy
+# Asennetaan Playwright ja Chromium-selain automaattisesti
+try:
+    import playwright
+except ImportError:
+    subprocess.run([sys.executable, "-m", "pip", "install", "playwright"])
+
+# Ladattujen selainten asennus (tämä on se kriittinen vaihe pilvessä)
+os.system("playwright install chromium")
+
+# 3. Tuodaan loput kirjastot vasta asennuksen jälkeen
+import streamlit as st
 import requests
 from icalendar import Calendar
 from datetime import datetime, date
 from playwright.sync_api import sync_playwright
-
-# --- ASENNUSVAIHE (TÄMÄ TULEE TÄHÄN) ---
-# Tarkistetaan ja asennetaan Playwright-kirjasto sekä selain
-try:
-    import playwright
-except ImportError:
-    subprocess.run(["pip", "install", "playwright"])
-
-# Asennetaan Chromium-selain pilvipalvelua varten
-os.system("playwright install chromium")
 
 # Määrittele joukkueet ja heidän ICS-linkkinsä
 JOUKKUEET = {
