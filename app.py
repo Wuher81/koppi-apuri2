@@ -144,11 +144,14 @@ if aja_haku:
                                         try:
                                             page.goto(f"https://assat-app.jopox.fi/{t_path}/club/{j['club_id']}/{uid_nro}")
                                             page.wait_for_selector("#yesBox", timeout=12000)
-                                            if t_path == "training":
-                                                maara = page.locator("#yesBox .chip.player").count()
-                                                if maara == 0: maara = page.locator("#yesBox .chip").count()
-                                            else:
-                                                maara = page.locator("#yesBox .chip").count()
+                                            
+                                            maara = page.locator("#yesBox .chip.player").count()
+                                            if maara == 0: 
+                                                kaikki_chipit = page.locator("#yesBox .chip").count()
+                                                if kaikki_chipit > 0:
+                                                    maara = kaikki_chipit
+
+                                        
                                             
                                             tulokset.append({
                                                 "Pvm": nayta_pvm, "Klo": klo, "Tyyppi": "PELI" if t_path == "game" else "HKT",
