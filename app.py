@@ -6,6 +6,7 @@ import sys
 # Asennetaan Playwright ja Chromium-selain automaattisesti
 try:
     import playwright
+    import icalendar
 except ImportError:
     subprocess.run([sys.executable, "-m", "pip", "install", "playwright", "icalendar"])
 
