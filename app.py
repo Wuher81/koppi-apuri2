@@ -1,12 +1,26 @@
+import streamlit as st
+import os
+import subprocess
 import requests
 from icalendar import Calendar
 from datetime import datetime, date
 from playwright.sync_api import sync_playwright
 
+# --- ASENNUSVAIHE (TÄMÄ TULEE TÄHÄN) ---
+# Tarkistetaan ja asennetaan Playwright-kirjasto sekä selain
+try:
+    import playwright
+except ImportError:
+    subprocess.run(["pip", "install", "playwright"])
+
+# Asennetaan Chromium-selain pilvipalvelua varten
+os.system("playwright install chromium")
+
 # Määrittele joukkueet ja heidän ICS-linkkinsä
 JOUKKUEET = {
     "U10 Valkoinen": "https://assat-app.jopox.fi/calendar/6755/export.ics", # Esimerkki-ID
-    "U10 Punainen":  "https://assat-app.jopox.fi/calendar/6756/export.ics"
+    "U10 Punainen":  "https://assat-app.jopox.fi/calendar/6756/export.ics",
+    "U12": "https://assat-app.jopox.fi/calendar/54321/export.ics",
 }
 
 def hae_paivan_linkit(ics_url):
