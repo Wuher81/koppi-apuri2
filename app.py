@@ -1,26 +1,9 @@
 import streamlit as st
-from playwright.sync_api import sync_playwright
 import requests
 import re
-import os
-import subprocess
 from datetime import datetime, timedelta
 
-# --- 1. SELAIMEN ASENNUS (TÄRKEÄÄ) ---
-def asenna_selaimet():
-    # Playwright asentaa selaimet yleensä tähän polkuun Streamlit Cloudissa
-    path = os.path.expanduser("~/.cache/ms-playwright")
-    if not os.path.exists(path):
-        with st.spinner("Asennetaan selainympäristöä... Tämä tehdään vain kerran."):
-            try:
-                subprocess.run(["python", "-m", "playwright", "install", "chromium"], check=True)
-                subprocess.run(["python", "-m", "playwright", "install-deps", "chromium"], check=True)
-            except Exception as e:
-                st.error(f"Asennusvirhe: {e}")
-
-asenna_selaimet()
-
-# --- 2. ASETUKSET ---
+# --- JOUKKUEIDEN ASETUKSET ---
 JOUKKUEET = [
     {"nimi": "Ässät U12", "ical": "https://ics.jopox.fi/hockeypox/calendar/ical.php?ics=true&e=t&cal=U122014_9664", "club_id": "9664"},
     {"nimi": "Ässät U13", "ical": "https://ics.jopox.fi/hockeypox/calendar/ical.php?ics=true&e=t&cal=U132013_9665", "club_id": "9665"},
@@ -28,86 +11,84 @@ JOUKKUEET = [
     {"nimi": "Ässät Maalivahdit", "ical": "https://ics.jopox.fi/hockeypox/calendar/ical.php?ics=true&e=t&cal=Maalivahtijaatoiminta_9681", "club_id": "9681"}
 ]
 
-# --- 3. LOGIIKKA ---
-def aja_haku(user, pw, alku_pvm, loppu_pvm):
+def aja_haku_lite(user, pw, alku_pvm, loppu_pvm):
+    session = requests.Session()
+    session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"})
+    
     tulokset = []
-    with sync_playwright() as p:
-        # headless=True ja args ovat pakollisia pilvessä
-        browser = p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
-        context = browser.new_context()
-        page = context.new_page()
+    
+    try:
+        # 1. Kirjautuminen
+        st.write("Kirjaudutaan Jopoxiin...")
+        login_url = "https://login.jopox.fi/login/authenticate"
+        login_payload = {
+            "username": user,
+            "password": pw,
+            "login": "Kirjaudu"
+        }
+        
+        # Kirjaudutaan sisään (to = 145 on Ässät-sovellus)
+        session.post("https://login.jopox.fi/login?to=145", data=login_payload)
 
-        try:
-            # Kirjautuminen
-            page.goto("https://login.jopox.fi/login?to=145")
-            page.wait_for_selector("input[type='password']", timeout=10000)
-            page.keyboard.press("Shift+Tab")
-            page.keyboard.type(user)
-            page.keyboard.press("Tab")
-            page.keyboard.type(pw)
-            page.keyboard.press("Enter")
+        # 2. Aikavälin läpikäynti
+        curr = alku_pvm
+        while curr <= loppu_pvm:
+            pvm_str = curr.strftime('%Y%m%d')
+            nayta_pvm = curr.strftime('%d.%m.%Y')
             
-            # Odotetaan hetki kirjautumista
-            page.wait_for_timeout(5000)
-
-            curr = alku_pvm
-            while curr <= loppu_pvm:
-                etsi_pvm = curr.strftime('%Y%m%d')
-                nayta_pvm = curr.strftime('%d.%m.%Y')
+            for j in JOUKKUEET:
+                # Haetaan iCal-data
+                ical_res = requests.get(j['ical'])
+                # Etsitään päivän tapahtumat iCal-tekstistä
+                events = ical_res.text.replace("\r\n ", "").split("BEGIN:VEVENT")
                 
-                for j in JOUKKUEET:
-                    res = requests.get(j['ical'])
-                    ical = res.text.replace("\r\n ", "").replace("\n ", "")
-                    
-                    for seg in ical.split("BEGIN:VEVENT"):
-                        if "END:VEVENT" not in seg: continue
-                        
-                        pvm_m = re.search(r"DTSTART[:;](?:.*:)?(\d{8})", seg)
-                        if pvm_m and pvm_m.group(1) == etsi_pvm:
-                            # Aikojen ja UID:n haku (sama logiikka kuin alkuperäisessä)
-                            uid_match = re.search(r"UID:(.*)", seg)
-                            if uid_match:
-                                uid_nro = "".join(filter(str.isdigit, uid_match.group(1)))
-                                t_path = "game" if "game" in uid_match.group(1).lower() else "training"
-                                
-                                try:
-                                    page.goto(f"https://assat-app.jopox.fi/{t_path}/club/{j['club_id']}/{uid_nro}")
-                                    page.wait_for_selector("#yesBox", timeout=5000)
-                                    maara = page.locator("#yesBox .chip.player").count()
-                                    if maara == 0: maara = page.locator("#yesBox .chip").count()
-                                    
-                                    tulokset.append({
-                                        "Päivä": nayta_pvm,
-                                        "Joukkue": j['nimi'],
-                                        "Pelaajia": maara,
-                                        "Tarve": "2 KOPPIA" if maara > 16 else "1 KOPPI"
-                                    })
-                                except: pass
-                curr += timedelta(days=1)
-        finally:
-            browser.close()
+                for event in events:
+                    if pvm_str in event:
+                        uid_match = re.search(r"UID:(.*)", event)
+                        if uid_match:
+                            uid = "".join(filter(str.isdigit, uid_match.group(1)))
+                            t_path = "game" if "game" in event.lower() else "training"
+                            
+                            # Haetaan tapahtumasivu suoraan
+                            url = f"https://assat-app.jopox.fi/{t_path}/club/{j['club_id']}/{uid}"
+                            page_res = session.get(url)
+                            
+                            # LASKENTA: Etsitään "chip player" esiintymät HTML:stä
+                            # Tämä perustuu lähettämääsi lähdekoodiin
+                            pelaajat = page_res.text.count("chip  player")
+                            
+                            if pelaajat > 0:
+                                tulokset.append({
+                                    "Pvm": nayta_pvm,
+                                    "Joukkue": j['nimi'],
+                                    "Pelaajia": pelaajat,
+                                    "Koppitarve": "2 KOPPIA" if pelaajat > 16 else "1 KOPPI"
+                                })
+            curr += timedelta(days=1)
+            
+    except Exception as e:
+        st.error(f"Haku epäonnistui: {e}")
+    
     return tulokset
 
-# --- 4. KÄYTTÖLIITTYMÄ ---
-st.set_page_config(page_title="Koppi-Apuri", page_icon="🏒")
-st.title("🏒 Ässät Koppi-Apuri")
+# --- KÄYTTÖLIITTYMÄ ---
+st.set_page_config(page_title="Ässät Koppi-Web", page_icon="🏒")
+st.title("🏒 Ässät Koppi-Apuri (Lite)")
 
 with st.sidebar:
-    user = st.text_input("Jopox Tunnus")
-    pw = st.text_input("Salasana", type="password")
-    alku = st.date_input("Alku", datetime.now())
-    loppu = st.date_input("Loppu", datetime.now() + timedelta(days=3))
-    nappi = st.button("Hae tiedot")
+    u = st.text_input("Jopox Tunnus")
+    p = st.text_input("Salasana", type="password")
+    start = st.date_input("Alku", datetime.now())
+    end = st.date_input("Loppu", datetime.now() + timedelta(days=4))
+    nappi = st.button("HAE TIEDOT")
 
 if nappi:
-    if not user or not pw:
-        st.error("Syötä tunnus ja salasana!")
+    if not u or not p:
+        st.error("Syötä tunnukset!")
     else:
-        with st.status("Haetaan tietoja Jopoxista...", expanded=True) as status:
-            data = aja_haku(user, pw, alku, loppu)
-            status.update(label="Haku valmis!", state="complete", expanded=False)
-        
-        if data:
-            st.table(data)
-        else:
-            st.info("Ei tapahtumia valitulla aikavälillä.")
+        with st.spinner("Haetaan tietoja ilman selainta..."):
+            data = aja_haku_lite(u, p, start, end)
+            if data:
+                st.table(data)
+            else:
+                st.info("Ei tapahtumia tai kirjautuminen epäonnistui.")
