@@ -49,25 +49,16 @@ def aja_haku_kirjautumisella(kayttaja, salasana):
             # Kirjautumisvaihe
             st.info("Kirjaudutaan sisään Jopoxiin...")
             page.goto("https://login.jopox.fi/login?to=145")
-                
-            target = page
-            for f in page.frames:
-                    if f.locator("input[type='password']").count() > 0:
-                        target = f; break
-                
-            target.locator("input[type='password']").click()
-            page.keyboard.press("Shift+Tab")
-            page.keyboard.type(self.user_entry.get())
-            page.keyboard.press("Tab")
-            page.keyboard.type(self.pw_entry.get())
-            page.keyboard.press("Enter")
-                
-                # Siirtyminen selainversioon (tärkeä!)
+            page.fill('input[name="username"]', kayttaja)
+            page.fill('input[name="password"]', salasana)
+            page.click('button[type="submit"]')
+
+            # Siirtyminen selainversioon (tärkeä!)
             time.sleep(5)
             btn = page.locator("text=/TO BROWSER VERSION|SIIRRY SELAINVERSIOON/i")
             if btn.is_visible():
-                    btn.click()
-                    time.sleep(2)
+                btn.click()
+                time.sleep(2)
             
             # Odotetaan, että sivu latautuu kirjautumisen jälkeen
             page.wait_for_load_state("networkidle")
