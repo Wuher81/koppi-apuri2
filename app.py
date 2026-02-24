@@ -7,7 +7,7 @@ import sys
 try:
     import playwright
 except ImportError:
-    subprocess.run([sys.executable, "-m", "pip", "install", "playwright"])
+    subprocess.run([sys.executable, "-m", "pip", "install", "playwright", "icecalendar"])
 
 # Ladattujen selainten asennus (tämä on se kriittinen vaihe pilvessä)
 os.system("playwright install chromium")
