@@ -1,6 +1,7 @@
 import streamlit as st
 import requests
 import re
+import time  # Tarvitaan viiveitä varten
 from datetime import datetime, timedelta
 from bs4 import BeautifulSoup
 
@@ -24,7 +25,7 @@ def aja_haku_varmistettu(user, pw, alku_pvm, loppu_pvm):
     tulokset = []
     
     try:
-        # 1. ALUSTUS: Haetaan kirjautumissivu
+        # 1. ALUSTUS
         st.write("Alustetaan istuntoa...")
         init_resp = session.get("https://login.jopox.fi/login?to=145")
         soup = BeautifulSoup(init_resp.text, 'html.parser')
@@ -42,23 +43,33 @@ def aja_haku_varmistettu(user, pw, alku_pvm, loppu_pvm):
         st.write("Kirjaudutaan sisään...")
         login_res = session.post("https://login.jopox.fi/login/authenticate", data=login_payload, allow_redirects=True)
         
-        # 3. KÄSITELLÄÄN "MY ASSOCIATIONS" -VÄLISIVU (Kuvakaappauksesi vaihe)
+        # --- LISÄTTY VIIVE ---
+        # Annetaan Jopoxin session asettua rauhassa (kuten alkuperäisessä koodissasi)
+        time.sleep(3) 
+        
+        # 3. KÄSITELLÄÄN "MY ASSOCIATIONS" -VÄLISIVU
         st.write("Siirrytään selainversioon...")
         assoc_soup = BeautifulSoup(login_res.text, 'html.parser')
         
-        # Etsitään "TO BROWSER VERSION" -painike (yleensä <a> tai <button>)
-        browser_link = assoc_soup.find("a", text=re.compile(r"TO BROWSER VERSION", re.I))
+        # Etsitään kaikki linkit ja katsotaan onko niissä teksti "BROWSER VERSION"
+        browser_link = None
+        for a in assoc_soup.find_all("a", href=True):
+            if "BROWSER VERSION" in a.get_text().upper() or "SELAINVERSIO" in a.get_text().upper():
+                browser_link = a
+                break
         
-        if browser_link and 'href' in browser_link.attrs:
+        if browser_link:
             target_url = browser_link['href']
             if not target_url.startswith("http"):
                 target_url = "https://login.jopox.fi" + target_url
             session.get(target_url, allow_redirects=True)
+            # Viive klikkauksen jälkeen
+            time.sleep(2)
         
-        # 4. TARKISTUS: Päästäänkö kalenterisivuille
+        # 4. TARKISTUS
         check_res = session.get("https://assat-app.jopox.fi/home", allow_redirects=True)
         if "Kirjaudu" in check_res.text:
-            st.error("❌ Kirjautuminen epäonnistui välisivulla. Varmista tunnukset.")
+            st.error("❌ Kirjautuminen epäonnistui välisivulla. Tarkista tunnus/salasana.")
             return None
 
         st.success("✅ Kirjautuminen onnistui!")
@@ -117,7 +128,7 @@ with st.sidebar:
 
 if nappi:
     if not u or not p:
-        st.warning("Syötä sähköpostiosoite ja salasana.")
+        st.warning("Syötä tunnukset.")
     else:
         with st.status("Haetaan tietoja...", expanded=True) as status:
             data = aja_haku_varmistettu(u, p, alku, loppu)
@@ -127,4 +138,4 @@ if nappi:
                     st.table(data)
                 else:
                     status.update(label="Ei tapahtumia löydetty.", state="error")
-                    st.info("Valitulla aikavälillä ei löytynyt tapahtumia.")
+                    st.info("Valitulla aikavälillä ei löytynyt tapahtumia iCal-linkeistä.")
