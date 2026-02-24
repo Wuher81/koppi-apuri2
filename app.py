@@ -138,7 +138,7 @@ if aja_haku:
                                         uid_nro = "".join(filter(str.isdigit, uid.group(1)))
                                         t_path = "game" if "game" in uid.group(1).lower() else "training"
                                         
-                                        page.goto(f"https://assat-app.jopox.fi/{t_path}/club/{j['club_id']}/{uid_nro}")
+                                        
                                         
                                         # Kokeillaan ladata pelaajat, jos epäonnistuu, hypätään yli
                                         try:
