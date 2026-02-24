@@ -7,7 +7,7 @@ import sys
 try:
     import playwright
 except ImportError:
-    subprocess.run([sys.executable, "-m", "pip", "install", "playwright", "icecalendar"])
+    subprocess.run([sys.executable, "-m", "pip", "install", "playwright", "icalendar"])
 
 # Ladattujen selainten asennus (tämä on se kriittinen vaihe pilvessä)
 os.system("playwright install chromium")
@@ -15,7 +15,7 @@ os.system("playwright install chromium")
 # 3. Tuodaan loput kirjastot vasta asennuksen jälkeen
 import streamlit as st
 import requests
-from icelendar import Calendar
+from icalendar import Calendar
 from datetime import datetime, date
 from playwright.sync_api import sync_playwright
 
