@@ -15,7 +15,7 @@ os.system("playwright install chromium")
 # 3. Tuodaan loput kirjastot vasta asennuksen jälkeen
 import streamlit as st
 import requests
-from icalendar import Calendar
+from icelendar import Calendar
 from datetime import datetime, date
 from playwright.sync_api import sync_playwright
 
