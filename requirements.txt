@@ -1,5 +1,5 @@
 streamlit
-playwright==1.41.2
+playwright
 requests
 pandas
 icalendar
