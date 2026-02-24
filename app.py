@@ -8,11 +8,21 @@ import re
 from datetime import datetime, timedelta
 
 # Tarkistetaan onko selaimet jo asennettu, jos ei, asennetaan ne
-if not os.path.exists("/home/appuser/.cache/ms-playwright"):
-    try:
-        subprocess.run(["playwright", "install", "chromium"], check=True)
-    except Exception as e:
-        print(f"Selainasennus epäonnistui: {e}")
+def asenna_selaimet():
+    # Tämä kansio on paikka, jonne Playwright asentaa selaimet oletuksena
+    playwright_path = os.path.expanduser("~/.cache/ms-playwright")
+    
+    # Jos kansiota ei ole, asennetaan Chromium
+    if not os.path.exists(playwright_path):
+        with st.spinner("Asennetaan selainta ensimmäistä kertaa... Tämä kestää hetken."):
+            try:
+                # Asentaa itse selainbinäärit
+                subprocess.run(["python", "-m", "playwright", "install", "chromium"], check=True)
+                # Asentaa mahdolliset puuttuvat järjestelmäkirjastot (varmuuden vuoksi)
+                subprocess.run(["python", "-m", "playwright", "install-deps", "chromium"], check=True)
+                st.success("Selain asennettu onnistuneesti!")
+            except Exception as e:
+                st.error(f"Virhe selaimen asennuksessa: {e}")
 
 # --- JOUKKUEET ASETUKSET ---
 JOUKKUEET = [
@@ -24,7 +34,7 @@ def aja_haku(user, pw, alku_pvm, loppu_pvm, halli_valinta):
     tulokset = []
     with sync_playwright() as p:
         # TÄRKEÄÄ: Pilvipalvelussa tarvitaan usein nämä argumentit
-        browser = p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
+        browser = p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"])
         context = browser.new_context()
         page = context.new_page()
 
