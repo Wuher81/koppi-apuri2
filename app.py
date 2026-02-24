@@ -142,6 +142,7 @@ if aja_haku:
                                         
                                         # Kokeillaan ladata pelaajat, jos epäonnistuu, hypätään yli
                                         try:
+                                            page.goto(f"https://assat-app.jopox.fi/{t_path}/club/{j['club_id']}/{uid_nro}")
                                             page.wait_for_selector("#yesBox", timeout=12000)
                                             if t_path == "training":
                                                 maara = page.locator("#yesBox .chip.player").count()
