@@ -1,5 +1,5 @@
-streamlit
 playwright
-requests
-pandas
 icalendar
+requests
+streamlit
+pandas

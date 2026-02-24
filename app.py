@@ -8,10 +8,10 @@ try:
     import playwright
     import icalendar
 except ImportError:
-    subprocess.run([sys.executable, "-m", "pip", "install", "playwright", "icalendar"])
+    subprocess.run([sys.executable, "-m", "pip", "install", "playwright>=1.49.0", "icalendar"])
 
 # Ladattujen selainten asennus (tämä on se kriittinen vaihe pilvessä)
-os.system("playwright install chromium")
+os.system(f"{sys.executable} -m playwright install chromium")
 
 # 3. Tuodaan loput kirjastot vasta asennuksen jälkeen
 import streamlit as st
@@ -53,7 +53,7 @@ def hae_paivan_linkit(ics_url):
 def aja_koppiapu_pilvessa():
     with sync_playwright() as p:
         # TÄRKEÄÄ: headless=True pilvipalveluissa!
-        browser = p.chromium.launch(headless=True) 
+        browser = p.chromium.launch(headless=True, args=["--no-sandbox" , "--disable-setuid-sandbox"]) 
         context = browser.new_context()
         page = context.new_page()
 
