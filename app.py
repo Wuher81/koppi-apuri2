@@ -1,10 +1,18 @@
 import streamlit as st
+import subprocess
 import os
 os.system("playwright install chromium")
 from playwright.sync_api import sync_playwright
 import requests
 import re
 from datetime import datetime, timedelta
+
+# Tarkistetaan onko selaimet jo asennettu, jos ei, asennetaan ne
+if not os.path.exists("/home/appuser/.cache/ms-playwright"):
+    try:
+        subprocess.run(["playwright", "install", "chromium"], check=True)
+    except Exception as e:
+        print(f"Selainasennus epäonnistui: {e}")
 
 # --- JOUKKUEET ASETUKSET ---
 JOUKKUEET = [
