@@ -15,43 +15,55 @@ JOUKKUEET = [
 def aja_haku_varmistettu(user, pw, alku_pvm, loppu_pvm):
     session = requests.Session()
     session.headers.update({
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Origin": "https://login.jopox.fi",
+        "Referer": "https://login.jopox.fi/login?to=145"
     })
     
     tulokset = []
     
     try:
-        # 1. HAETAAN KIRJAUTUMISSIVUN TEKNISET AVAIMET
-        st.write("Valmistellaan kirjautumista...")
-        resp = session.get("https://login.jopox.fi/login?to=145")
-        soup = BeautifulSoup(resp.text, 'html.parser')
-        
-        # ASP.NET vaatii nämä piilokentät
-        viewstate = soup.find("input", {"name": "__VIEWSTATE"})
-        validation = soup.find("input", {"name": "__EVENTVALIDATION"})
-        generator = soup.find("input", {"name": "__VIEWSTATEGENERATOR"})
+        # 1. ALUSTUS: Haetaan kirjautumissivu
+        st.write("Alustetaan istuntoa...")
+        init_resp = session.get("https://login.jopox.fi/login?to=145")
+        soup = BeautifulSoup(init_resp.text, 'html.parser')
         
         login_payload = {
-            "__VIEWSTATE": viewstate['value'] if viewstate else "",
-            "__VIEWSTATEGENERATOR": generator['value'] if generator else "",
-            "__EVENTVALIDATION": validation['value'] if validation else "",
+            "__VIEWSTATE": soup.find("input", {"name": "__VIEWSTATE"})['value'] if soup.find("input", {"name": "__VIEWSTATE"}) else "",
+            "__VIEWSTATEGENERATOR": soup.find("input", {"name": "__VIEWSTATEGENERATOR"})['value'] if soup.find("input", {"name": "__VIEWSTATEGENERATOR"}) else "",
+            "__EVENTVALIDATION": soup.find("input", {"name": "__EVENTVALIDATION"})['value'] if soup.find("input", {"name": "__EVENTVALIDATION"}) else "",
             "username": user,
             "password": pw,
             "login": "Kirjaudu"
         }
         
         # 2. KIRJAUDUTAAN SISÄÄN
-        login_res = session.post("https://login.jopox.fi/login/authenticate", data=login_payload)
+        st.write("Kirjaudutaan sisään...")
+        login_res = session.post("https://login.jopox.fi/login/authenticate", data=login_payload, allow_redirects=True)
         
-        # TARKISTUS: Onko kirjautuminen onnistunut? (Jopox-sovelluksen kotisivu pitäisi löytyä)
-        check_res = session.get("https://assat-app.jopox.fi/home")
-        if "Kirjaudu sisään" in check_res.text or login_res.status_code != 200:
-            st.error("❌ Kirjautuminen epäonnistui. Tarkista sähköposti ja salasana.")
+        # 3. KÄSITELLÄÄN "MY ASSOCIATIONS" -VÄLISIVU (Kuvakaappauksesi vaihe)
+        st.write("Siirrytään selainversioon...")
+        assoc_soup = BeautifulSoup(login_res.text, 'html.parser')
+        
+        # Etsitään "TO BROWSER VERSION" -painike (yleensä <a> tai <button>)
+        browser_link = assoc_soup.find("a", text=re.compile(r"TO BROWSER VERSION", re.I))
+        
+        if browser_link and 'href' in browser_link.attrs:
+            target_url = browser_link['href']
+            if not target_url.startswith("http"):
+                target_url = "https://login.jopox.fi" + target_url
+            session.get(target_url, allow_redirects=True)
+        
+        # 4. TARKISTUS: Päästäänkö kalenterisivuille
+        check_res = session.get("https://assat-app.jopox.fi/home", allow_redirects=True)
+        if "Kirjaudu" in check_res.text:
+            st.error("❌ Kirjautuminen epäonnistui välisivulla. Varmista tunnukset.")
             return None
 
         st.success("✅ Kirjautuminen onnistui!")
 
-        # 3. KALENTERIN LÄPIKÄYNTI
+        # 5. KALENTERIN LÄPIKÄYNTI
         curr = alku_pvm
         while curr <= loppu_pvm:
             pvm_str = curr.strftime('%Y%m%d')
@@ -68,17 +80,14 @@ def aja_haku_varmistettu(user, pw, alku_pvm, loppu_pvm):
                             uid = "".join(filter(str.isdigit, uid_match.group(1)))
                             t_path = "game" if "game" in event.lower() else "training"
                             
-                            # Haetaan tapahtuman sivu
                             url = f"https://assat-app.jopox.fi/{t_path}/club/{j['club_id']}/{uid}"
                             page_res = session.get(url)
                             
-                            # LASKENTA: Etsitään "chip player" ja varmuuden vuoksi myös "selectable" (kuten koodissasi näkyi)
                             event_soup = BeautifulSoup(page_res.text, 'html.parser')
-                            
-                            # Lasketaan divit, jotka ovat boxin 'yesBox' sisällä ja joilla on luokka 'player'
                             yes_box = event_soup.find("div", id="yesBox")
+                            
                             if yes_box:
-                                pelaajat = yes_box.find_all("div", class_="player")
+                                pelaajat = yes_box.find_all("div", class_=re.compile(r"\bplayer\b"))
                                 maara = len(pelaajat)
                                 
                                 if maara > 0:
@@ -91,7 +100,7 @@ def aja_haku_varmistettu(user, pw, alku_pvm, loppu_pvm):
             curr += timedelta(days=1)
             
     except Exception as e:
-        st.error(f"Tekninen virhe haun aikana: {e}")
+        st.error(f"Tekninen virhe: {e}")
     
     return tulokset
 
@@ -100,12 +109,11 @@ st.set_page_config(page_title="Ässät Koppi-Apuri", layout="centered")
 st.title("🏒 Ässät Koppi-Apuri")
 
 with st.sidebar:
-    st.subheader("Kirjautuminen")
     u = st.text_input("Jopox Tunnus (Sähköposti)")
     p = st.text_input("Salasana", type="password")
     alku = st.date_input("Alku", datetime.now())
     loppu = st.date_input("Loppu", datetime.now() + timedelta(days=3))
-    nappi = st.button("HAE KOPPITARPEET")
+    nappi = st.button("HAE TIEDOT")
 
 if nappi:
     if not u or not p:
@@ -119,4 +127,4 @@ if nappi:
                     st.table(data)
                 else:
                     status.update(label="Ei tapahtumia löydetty.", state="error")
-                    st.info("Valitulla aikavälillä ei löytynyt tapahtumia iCal-kalentereista.")
+                    st.info("Valitulla aikavälillä ei löytynyt tapahtumia.")
