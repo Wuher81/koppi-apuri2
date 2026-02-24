@@ -49,6 +49,11 @@ def aja_haku_kirjautumisella(kayttaja, salasana):
             # Kirjautumisvaihe
             st.info("Kirjaudutaan sisään Jopoxiin...")
             page.goto("https://login.jopox.fi/login?to=145")
+            target = page
+            for f in page.frames:
+                if f.locator("input[type='password']").count() > 0:
+                    target = f; break
+            target.locator("input[type='password']").click()
             page.fill('input[name="username"]', kayttaja)
             page.fill('input[name="password"]', salasana)
             page.click('button[type="submit"]')
