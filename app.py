@@ -47,7 +47,7 @@ def aja_haku_kirjautumisella(kayttaja, salasana):
 
         try:
             # Kirjautumisvaihe
-            self.paivita_status("Kirjaudutaan...")
+            st.info("Kirjaudutaan sisään Jopoxiin...")
             page.goto("https://login.jopox.fi/login?to=145")
                 
             target = page
